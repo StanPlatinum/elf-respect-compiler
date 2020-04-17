@@ -157,12 +157,12 @@ namespace {
         bool hasCFICheck = false;
         bool hasTransactionBegin = false;
         bool entryLabelPrinted = false;
-        bool needInsertCFI = true;  //用于设置是否需要进行CFICheck插桩
-        bool needShadowStack = true;
-        bool needRspInsert = true;
-        bool needMovInsert = true;
-        bool needTsxInsert = true;
-        bool needExit = needShadowStack || needRspInsert || needMovInsert;
+        bool needCFIInsert = true;  //用于设置是否需要进行CFICheck插桩
+        bool needShadowStackInsert = true; //用于设置是否需要进行ShadowStack插桩
+        bool needRspInsert = true; //用于设置是否需要进行rsp检查插桩
+        bool needMovInsert = true; //用于设置是否需要进行mov检查插桩
+	//Weijie: tsx can be always true since we can set it in Transform/CFIHello/CFIHello.cpp
+        bool needTsxInsert = true; //用于设置是否需要进行tsx插桩
         string mainFunName = "enclave_main";
 
     public:
@@ -1146,19 +1146,29 @@ namespace {
         
         virtual bool runOnMachineFunction(MachineFunction &MF) {
             bool bm = false, bs = false, bc = false, br = false, bt = false;
+            bool needCFI = false, needShadowStack = false, needTsx = false, needRsp = false, needMov = false, needExit = false;
             string funName = MF.getFunction().getName().str();
-            needTsxInsert = ((funName.find("CFICheck") != string::npos) || (funName.find("transactionBegin") != string::npos)) ? false : true;
-            needMovInsert = (funName.find("transactionBegin") != string::npos) ? false : true;
+            needTsx = ((funName.find("CFICheck") != string::npos) || (funName.find("transactionBegin") != string::npos)) ? false : true;
+            needMov = (funName.find("transactionBegin") != string::npos) ? false : true;
+            needShadowStack = (funName.find("transactionBegin") != string::npos) ? false : true;
+            needRsp = (funName.find("transactionBegin") != string::npos) ? false : true;
+            needCFI = (funName.find("transactionBegin") != string::npos) ? false : true;
+            needTsx = needTsx && needTsxInsert;
+            needMov = needMov && needMovInsert;
+            needCFI = needCFI && needCFIInsert;
+            needShadowStack = needShadowStack && needShadowStackInsert;
+            needRsp = needRsp && needRspInsert;
+            needExit = needShadowStack || needRsp || needMov;
             outs() << MF.getFunction().getParent()->getName() << "\n";
 
-            if ((hasExit == false && needExit == true) || (hasCFICheck == false && needInsertCFI == true) || (hasTransactionBegin == false && needTsxInsert == true))
+            if ((hasExit == false && needExit == true) || (hasCFICheck == false && needCFI == true) || (hasTransactionBegin == false && needTsx == true))
             {
                 const Function &FF = MF.getFunction();
                 const Module &M = *FF.getParent();
                 findCFICheckExitTrsactionBegin(M);
             }
 
-            if (needInsertCFI == true && entryLabelPrinted == false && hasCFICheck == true)
+            if (needCFI == true && entryLabelPrinted == false)
             {
                 const Function &FF = MF.getFunction();
                 const Module &M = *FF.getParent();
@@ -1166,19 +1176,19 @@ namespace {
                 entryLabelPrinted = true;
             }
             
-            if (hasTransactionBegin == true && needTsxInsert == true)
+            if (hasTransactionBegin == true && needTsx == true)
             {
                 bt = tsxInsert(MF);
             }
             else
             {
-                string str = needTsxInsert ? "Cannot find trsactionbegin.\n" : "Donot need tsxInsert.\n";
+                string str = needTsx ? "Cannot find trsactionbegin.\n" : "Donot need tsxInsert.\n";
                 outs() << str;
             }
 
             if (hasExit == true)
             {
-                if (needMovInsert == true)
+                if (needMov == true)
                 {
                     bm = movInsert(MF);
                 }
@@ -1194,7 +1204,7 @@ namespace {
                 {
                     outs() << "Donot need ShadowStack.\n";
                 }
-                if (needRspInsert == true)
+                if (needRsp == true)
                 {
                     br = rspInsert(MF);
                 }
@@ -1205,16 +1215,17 @@ namespace {
             }
             else
             {
-                outs() << "Cannot find Exit.\n";
+                string str = needExit ? "Cannot find Exit.\n" : "Donot need rspInsert, movInsert and ShadowStack.\n";
+                outs() << str;
             }
             
-            if (hasCFICheck == true && needInsertCFI == true)
+            if (hasCFICheck == true && needCFI == true)
             {
                 bc = insertCFIFun(MF);
             }
             else
             {
-                string str = needInsertCFI ? "Cannot find CFICheck.\n" : "Donot need CFICheck.\n";
+                string str = needCFI ? "Cannot find CFICheck.\n" : "Donot need CFICheck.\n";
                 outs() << str;
             }
             
