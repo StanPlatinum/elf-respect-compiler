@@ -161,7 +161,6 @@ namespace {
         bool needShadowStackInsert = true; //用于设置是否需要进行ShadowStack插桩
         bool needRspInsert = true; //用于设置是否需要进行rsp检查插桩
         bool needMovInsert = true; //用于设置是否需要进行mov检查插桩
-	//Weijie: tsx can be always true since we can set it in Transform/CFIHello/CFIHello.cpp
         bool needTsxInsert = true; //用于设置是否需要进行tsx插桩
         string mainFunName = "enclave_main";
 
@@ -1041,6 +1040,14 @@ namespace {
                         MII++;
                         if (MII == MBBI->end())
                         {
+                            MII--;
+                            if(MII->isBranch() && MII->getOperand(0).isMBB())
+                            {
+                                MachineBasicBlock* MBB = MII->getOperand(0).getMBB();
+                                MBB->setLabelMustBeEmitted();
+                            }
+                            MII++;
+
                             //xend
                             BuildMI(*MBBI, MBBI->end(), DL, TII->get(X86::XEND));
                             //movq %r15, %rax
@@ -1066,17 +1073,28 @@ namespace {
                     {
                         continue;
                     }
-                    
                 }
                 if (!MBBI->isReturnBlock())
                 {
+                    auto MII = MBBI->end();
+                    MII--;
+                    if(MII->isBranch() && MII->getOperand(0).isMBB())
+                    {
+                       MachineBasicBlock* MBB = MII->getOperand(0).getMBB();
+                       MBB->setLabelMustBeEmitted();
+                    }
                     //movq %rax, %r15
                     BuildMI(*MBBI, MBBI->end(), DL, TII->get(MOV64rr)).addReg(X86::R15).addReg(X86::RAX);
                     //callq transactionBegin
                     BuildMI(*MBBI, MBBI->end(), DL, TII->get(X86::CALL64pcrel32)).addGlobalAddress(transactionBeginGV);
                 }
+                MBBI++;
+                if (MBBI != MF.end())
+                {
+                    MBBI->setLabelMustBeEmitted();
+                }
+                MBBI--;
             }
-            
             return true;
         }
         

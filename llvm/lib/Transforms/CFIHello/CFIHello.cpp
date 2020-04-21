@@ -41,7 +41,7 @@ namespace {
     bool needCFIInsert = true;
     bool needExitInsert = true;
     bool needTsxInsert = false;
-    bool needHyperraceInsert = true;
+    bool needHyperraceInsert = false;
   public:
     static char ID; // Pass identification, rep lacement for typeid
     CFIHello() : ModulePass(ID) {}
@@ -312,7 +312,18 @@ namespace {
                             continue;
                         }
                         Function *oFun = CI->getCalledFunction();
-                        string oldFunName = oFun->getName().str();
+                        string oldFunName;
+                        if (oFun != NULL)
+                        {
+                            oldFunName = oFun->getName().str();
+                            
+                        }
+                        else
+                        {
+                            Value* v = CI->getCalledOperand()->stripPointerCasts();
+                            oldFunName = v->getName().str();
+                        }
+
                         if (wrapperMap.find(oldFunName) == wrapperMap.end())
                         {
                             continue;
